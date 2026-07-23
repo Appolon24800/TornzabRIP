@@ -18,6 +18,15 @@ No real torrents are ever involved.
   credentials. Generate one locally with `streamrip config` and then mount it into the
   container.
 
+> **GHCR visibility:** new GitHub Container Registry packages are **private** by default.
+> To `docker pull` without logging in, go to
+> `https://github.com/users/Appolon24800/packages/container/tornzabrip/settings` and set
+> the visibility to **Public**. Otherwise authenticate first:
+>
+> ```bash
+> echo $GITHUB_TOKEN | docker login ghcr.io -u Appolon24800 --password-stdin
+> ```
+
 ## Run with Docker
 
 ```bash
@@ -102,6 +111,8 @@ docker run -p 8686:8686 -v $(pwd)/streamrip-config:/config/streamrip \
 
 ## Notes
 
+- The published image is multi-arch (`linux/amd64` + `linux/arm64`), so it runs on both
+  x86 hosts and ARM NAS devices.
 - The image installs a headless Chromium (via Playwright) because StreamRip uses it for
   Deezer login. This makes the image a few hundred MB.
 - The container runs as root by default. If you need a specific UID/GID owning the output
