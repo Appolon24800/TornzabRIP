@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+env/
+.env/
+.env.*
+
+# App runtime data & secrets (contains tokens / download history)
+jobs.json
+jobs.json.tmp
+config.toml
+streamrip.toml
+streamrip_config.toml
+*.arl
+ms_token.txt
+
+# Local streamrip config pulled into the repo
+.config/
+
+# Logs
+*.log
+logs/
+
+# Editor / IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# AI assistant / agent files
+.opencode/
+opencode.json
+opencode.jsonc
+.cursor/
+.cursorignore
+.claude/
+.github/copilot/
+CLAUDE.md
+GEMINI.md
+.codegpt/
+.aider*
