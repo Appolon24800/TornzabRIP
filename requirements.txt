@@ -1,3 +1,4 @@
 streamrip @ git+https://github.com/mikelandzelo173/streamrip.git@81a803e64ef9ff34751d6eedf82471c22e1cf4c6
 fastapi==0.136.3
+python-multipart==0.0.29
 uvicorn==0.48.0
