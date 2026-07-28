@@ -16,6 +16,7 @@ env/
 # App runtime data & secrets (contains tokens / download history)
 jobs.json
 jobs.json.tmp
+seen_releases.json
 config.toml
 streamrip.toml
 streamrip_config.toml
@@ -49,3 +50,4 @@ CLAUDE.md
 GEMINI.md
 .codegpt/
 .aider*
+.harness-memory/

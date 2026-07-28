@@ -91,7 +91,9 @@ def _source_url(source: str, release_id: str) -> str:
 def _item_xml(item: SearchResult, request: Request) -> Element:
     guid = encode_guid(item.source, item.release_id)
     hash_val = info_hash(guid)
-    title = f"{item.artist} - {item.album} [{item.format_label}] [{item.source.capitalize()}]"
+    tracks = item.num_tracks or 0
+    track_tag = f" [{tracks} track{'s' if tracks != 1 else ''}]" if tracks > 0 else ""
+    title = f"{item.artist} - {item.album} [{item.format_label}] [{item.source.capitalize()}]{track_tag}"
     download_url = f"{request.base_url}download?id={guid}"
     external_url = _source_url(item.source, item.release_id)
 

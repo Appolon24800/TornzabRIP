@@ -17,6 +17,10 @@ from job_store import store, DownloadJob, JobState
 from streamrip_api import streamrip, SearchResult
 from torznab import decode_guid, encode_guid, info_hash, router as torznab_router
 from qbittorrent import router as qbit_router
+from lidarr_sync import LidarrSync
+
+lidarr_sync = LidarrSync(streamrip)
+streamrip._lidarr_sync = lidarr_sync
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,7 +40,9 @@ async def lifespan(app: FastAPI):
     os.makedirs(DOWNLOAD_TARGET_DIR, exist_ok=True)
     store.load()
     await streamrip.startup()
+    await lidarr_sync.start()
     yield
+    await lidarr_sync.stop()
     await streamrip.shutdown()
     logger.info("%s shut down.", SERVER_TITLE)
 

@@ -81,6 +81,10 @@ docker compose up -d
 | `JOBS_FILE`              | `/data/jobs.json`                    | Persistent download-job state.                         |
 | `PORT`                   | `8686`                               | HTTP port the server listens on.                       |
 | `TORZNABRIP_API_KEY`     | *(empty)*                            | If set, Lidarr must send this as `?apikey=`. Empty = accept all. |
+| `LIDARR_URL`             | *(empty)*                            | Base URL of your Lidarr, e.g. `http://192.168.1.39:8686`. Enables the RSS sync when set with `LIDARR_API_KEY`. |
+| `LIDARR_API_KEY`         | *(empty)*                            | Lidarr API key (Settings → General). Required for RSS sync. |
+| `RSS_SYNC_INTERVAL`      | `3600`                               | Seconds between RSS sync polls. |
+| `SEEN_RELEASES_FILE`     | `seen_releases.json` (next to app)   | Persistent record of releases already seen, so only genuinely new ones are reported. |
 
 ## Volumes
 
@@ -100,6 +104,35 @@ docker compose up -d
    - Username/Password: anything (login always succeeds).
 3. Search an album in Lidarr — results come from Qobuz/Deezer and are delivered into
    your `/downloads` folder.
+
+## Automatic new-release discovery (RSS sync)
+
+Optionally, the server can poll Lidarr for your **monitored artists**, check
+Deezer for releases that are **new since the last run**, and surface them in the
+indexer's RSS feed so Lidarr's built-in RSS sync picks them up automatically.
+
+- The first run only *seeds* the set of known releases (so your feed isn't
+  flooded with an artist's whole back catalogue). New releases appear from the
+  second run onward.
+- The set of seen releases is persisted to `SEEN_RELEASES_FILE`, so it survives
+  restarts.
+
+Enable it with two environment variables:
+
+| Variable           | Example                          |
+| ------------------ | -------------------------------- |
+| `LIDARR_URL`       | `http://192.168.1.39:8686`       |
+| `LIDARR_API_KEY`   | your Lidarr API key              |
+
+```yaml
+environment:
+  LIDARR_URL: "http://192.168.1.39:8686"
+  LIDARR_API_KEY: "1a2b3c...d4e5f"
+  # RSS_SYNC_INTERVAL: "3600"  # optional, seconds between polls
+```
+
+In Lidarr, make sure **Indexers → (your TorznabRIP indexer) → RSS sync** is
+enabled so Lidarr queries the feed on its schedule.
 
 ## Build locally
 

@@ -23,21 +23,85 @@ def _make_dummy_db() -> Database:
     return Database(Dummy(), Dummy())
 
 
-def _estimate_size(source: str, format_str: str, num_tracks: int) -> int:
-    per_track = {
-        ("qobuz", "mp3"):   10 * 1024 * 1024,
-        ("qobuz", "flac"):  30 * 1024 * 1024,
-        ("qobuz", "hires"): 60 * 1024 * 1024,
-        ("deezer", "mp3"):  10 * 1024 * 1024,
-        ("deezer", "flac"): 30 * 1024 * 1024,
-    }
-    key = (source, format_str)
-    return per_track.get(key, 25 * 1024 * 1024) * max(num_tracks, 1)
+# Average bitrate per format, in bytes/second. Used to estimate release size
+# from the total play length.
+_AVG_BYTES_PER_SEC = {
+    "flac": 102_400,    # ~800 kbps (CD-quality FLAC)
+    "hires": 230_400,   # ~1800 kbps (hi-res FLAC)
+    "mp3-320": 40_000,  # 320 kbps
+    "mp3-128": 16_000,  # 128 kbps
+}
+
+# Average track length used to estimate total play time when the real duration
+# is not available.
+_AVG_TRACK_SECONDS = 210  # ~3.5 minutes
 
 
-def _extract_size(item: dict, source: str, num_tracks: int = 1) -> tuple[int, str]:
-    fmt = "flac"
-    return _estimate_size(source, fmt, num_tracks), fmt
+def _format_key(format_label: str) -> str:
+    fl = (format_label or "").upper()
+    if fl.startswith("FLAC"):
+        return "flac"
+    if "HIRES" in fl:
+        return "hires"
+    if "128" in fl:
+        return "mp3-128"
+    if "320" in fl:
+        return "mp3-320"
+    if fl.startswith("MP3"):
+        return "mp3-320"
+    return "flac"
+
+
+def _estimate_size(
+    format_label: str, num_tracks: int, duration_seconds: int | None = None
+) -> int:
+    if not duration_seconds or duration_seconds <= 0:
+        duration_seconds = max(num_tracks, 1) * _AVG_TRACK_SECONDS
+    bps = _AVG_BYTES_PER_SEC.get(_format_key(format_label), 102_400)
+    return int(duration_seconds * bps)
+
+
+def _extract_album_meta(pages: list[dict]) -> dict[str, dict]:
+    """Build {release_id: {"tracks": int, "duration": int|None}} from raw
+    search/featured responses.
+
+    Covers both Deezer (entries under ``data`` with ``nb_tracks``) and Qobuz
+    (entries under a nested ``items`` list with ``tracks_count``).
+    """
+    meta: dict[str, dict] = {}
+
+    def _scan_entries(entries):
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            eid = entry.get("id")
+            if eid is None:
+                continue
+            tracks = (
+                entry.get("nb_tracks")
+                or entry.get("tracks_count")
+                or entry.get("numberOfTracks")
+            )
+            duration = entry.get("duration")
+            if not tracks and not duration:
+                continue
+            try:
+                meta[str(eid)] = {
+                    "tracks": int(tracks) if tracks else 0,
+                    "duration": int(duration) if duration else None,
+                }
+            except (TypeError, ValueError):
+                pass
+
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        _scan_entries(page.get("data") or [])
+        for value in page.values():
+            if isinstance(value, dict):
+                _scan_entries(value.get("items") or [])
+
+    return meta
 
 
 class SearchResult:
@@ -84,6 +148,8 @@ class StreamRipApi:
         self._deezer: Optional[DeezerClient] = None
         self._db = _make_dummy_db()
         self._ready = False
+        self._duration_cache: dict[str, int] = {}
+        self._lidarr_sync = None
 
     async def startup(self) -> None:
         if not os.path.exists(STREAMRIP_CONFIG_PATH):
@@ -153,6 +219,7 @@ class StreamRipApi:
         album: str = "",
         media_type: str = "album",
         limit: int = 50,
+        enrich: bool = True,
     ) -> list[SearchResult]:
         if not self._ready:
             logger.warning("StreamRipApi not ready; returning empty results.")
@@ -170,9 +237,9 @@ class StreamRipApi:
 
         tasks = []
         if self._qobuz and self._qobuz.logged_in:
-            tasks.append(self._search_safe("qobuz", self._qobuz, media_type, search_query, limit))
+            tasks.append(self._search_safe("qobuz", self._qobuz, media_type, search_query, limit, enrich))
         if self._deezer and self._deezer.logged_in:
-            tasks.append(self._search_safe("deezer", self._deezer, media_type, search_query, limit))
+            tasks.append(self._search_safe("deezer", self._deezer, media_type, search_query, limit, enrich))
 
         if not tasks:
             return []
@@ -189,6 +256,18 @@ class StreamRipApi:
 
         return merged
 
+    async def enrich_results(self, results: list[SearchResult]) -> None:
+        """Fill in real durations/sizes for a mixed-source list of results."""
+        if not results:
+            return
+        by_source: dict[str, list[SearchResult]] = {}
+        for r in results:
+            by_source.setdefault(r.source, []).append(r)
+        for source, group in by_source.items():
+            client = self._qobuz if source == "qobuz" else self._deezer
+            if client and getattr(client, "logged_in", False):
+                await self._enrich_with_durations(source, client, group)
+
     async def _search_safe(
         self,
         source: str,
@@ -196,6 +275,7 @@ class StreamRipApi:
         media_type: str,
         query: str,
         limit: int,
+        enrich: bool = True,
     ) -> list[SearchResult]:
         try:
             pages = await client.search(media_type, query, limit=limit)
@@ -206,11 +286,74 @@ class StreamRipApi:
         if not pages:
             return []
 
+        results = self._build_results(source, pages, media_type)
+        if enrich:
+            await self._enrich_with_durations(source, client, results)
+        return results
+
+    async def _enrich_with_durations(
+        self, source: str, client, results: list[SearchResult]
+    ) -> None:
+        """Replace estimated sizes with ones based on the real album duration.
+
+        Durations are fetched per-release via the source client (concurrently)
+        and cached for the process lifetime. Anything that can't be fetched
+        keeps its track-count-based estimate.
+        """
+        if not results:
+            return
+
+        sem = asyncio.Semaphore(8)
+
+        async def _fetch(release_id: str) -> Optional[int]:
+            async with sem:
+                try:
+                    if source == "qobuz":
+                        meta = await asyncio.wait_for(
+                            client.get_metadata(release_id, "album"), timeout=5
+                        )
+                    else:
+                        meta = await asyncio.wait_for(
+                            client.get_album(release_id), timeout=5
+                        )
+                    d = meta.get("duration") if isinstance(meta, dict) else None
+                    return int(d) if d else None
+                except Exception as exc:
+                    logger.debug(
+                        "duration fetch failed %s:%s: %s", source, release_id, exc
+                    )
+                    return None
+
+        pending: list[tuple[SearchResult, str]] = []
+        for r in results:
+            key = f"{source}:{r.release_id}"
+            cached = self._duration_cache.get(key)
+            if cached:
+                r.size_bytes = _estimate_size(r.format_label, r.num_tracks or 1, cached)
+            else:
+                pending.append((r, key))
+
+        async def _task(r: SearchResult, key: str) -> None:
+            d = await _fetch(r.release_id)
+            if d:
+                self._duration_cache[key] = d
+                r.size_bytes = _estimate_size(r.format_label, r.num_tracks or 1, d)
+
+        await asyncio.gather(*(_task(r, k) for r, k in pending), return_exceptions=True)
+
+    def _build_results(
+        self, source: str, pages: list[dict], media_type: str
+    ) -> list[SearchResult]:
         try:
             search_results = SearchResults.from_pages(source, media_type, pages)
         except Exception as exc:
-            logger.error("Error parsing %s search results: %s", source, exc)
+            logger.error("Error parsing %s results: %s", source, exc)
             return []
+
+        # streamrip's AlbumSummary doesn't read Deezer's `nb_tracks`, so pull
+        # the real track counts (and duration, when available) straight from
+        # the raw response entries.
+        album_meta = _extract_album_meta(pages)
 
         quality = self._get_quality(source)
         format_label = self._format_label(source, quality)
@@ -219,8 +362,16 @@ class StreamRipApi:
         for item in search_results.results:
             try:
                 sr = self._normalise_summary(item, source, format_label, quality)
-                if sr:
-                    normalised.append(sr)
+                if not sr:
+                    continue
+                info = album_meta.get(str(sr.release_id))
+                if info:
+                    if info.get("tracks"):
+                        sr.num_tracks = info["tracks"]
+                    sr.size_bytes = _estimate_size(
+                        format_label, sr.num_tracks, info.get("duration")
+                    )
+                normalised.append(sr)
             except Exception as exc:
                 logger.error("Error normalising %s result: %s", source, exc)
                 continue
@@ -255,7 +406,7 @@ class StreamRipApi:
         album = name
         num_tracks = int(getattr(item, "num_tracks", "1") or "1")
 
-        size_bytes, _ = _extract_size({}, source, num_tracks)
+        size_bytes = _estimate_size(format_label, num_tracks)
         year = getattr(item, "date_released", "") or ""
 
         return SearchResult(
@@ -275,6 +426,14 @@ class StreamRipApi:
     async def featured(self, limit: int = 50) -> list[SearchResult]:
         if not self._ready:
             return []
+
+        # When Lidarr RSS sync is configured, the empty-query feed reflects new
+        # releases by the user's monitored artists rather than generic charts.
+        if self._lidarr_sync and self._lidarr_sync.enabled:
+            curated = await self._lidarr_sync.get_new_releases(limit)
+            if curated:
+                return curated
+            logger.info("Lidarr feed empty; falling back to featured releases.")
 
         tasks = []
         if self._qobuz and self._qobuz.logged_in:
@@ -316,26 +475,14 @@ class StreamRipApi:
             if not pages:
                 return []
 
-            search_results = SearchResults.from_pages(source, media_type, pages)
+            results = self._build_results(source, pages, media_type)
         except Exception as exc:
             logger.error("Featured error on %s: %s", source, exc)
             return []
 
-        quality = self._get_quality(source)
-        format_label = self._format_label(source, quality)
-
-        normalised: list[SearchResult] = []
-        for item in search_results.results:
-            try:
-                sr = self._normalise_summary(item, source, format_label, quality)
-                if sr:
-                    normalised.append(sr)
-            except Exception as exc:
-                logger.error("Error normalising %s featured result: %s", source, exc)
-                continue
-
-        logger.info("Featured: got %d results from %s", len(normalised), source)
-        return normalised
+        await self._enrich_with_durations(source, client, results)
+        logger.info("Featured: got %d results from %s", len(results), source)
+        return results
 
     async def download(
         self,
