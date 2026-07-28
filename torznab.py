@@ -13,7 +13,6 @@ from config import (
     SERVER_TITLE,
     CATEGORY_AUDIO,
     CATEGORY_AUDIO_MP3,
-    CATEGORY_AUDIO_FLAC,
     CATEGORY_AUDIO_OTHER,
     CATEGORY_AUDIO_LOSSLESS,
     API_KEY,
@@ -52,7 +51,7 @@ CATEGORY_MAP = {
     "MP3": CATEGORY_AUDIO_MP3,
     "MP3-128": CATEGORY_AUDIO_MP3,
     "MP3-320": CATEGORY_AUDIO_MP3,
-    "FLAC": CATEGORY_AUDIO_FLAC,
+    "FLAC": CATEGORY_AUDIO_LOSSLESS,
 }
 
 
@@ -186,9 +185,8 @@ def _caps(request: Request):
     for cat_id, cat_name in [
         (str(CATEGORY_AUDIO), "Audio"),
         (str(CATEGORY_AUDIO_MP3), "Audio/MP3"),
-        (str(CATEGORY_AUDIO_FLAC), "Audio/FLAC"),
-        (str(CATEGORY_AUDIO_OTHER), "Audio/Other"),
         (str(CATEGORY_AUDIO_LOSSLESS), "Audio/Lossless"),
+        (str(CATEGORY_AUDIO_OTHER), "Audio/Other"),
     ]:
         cat = SubElement(cats, "category")
         cat.set("id", cat_id)
@@ -198,7 +196,7 @@ def _caps(request: Request):
     return Response(content=xml_str, media_type="application/xml")
 
 
-_ALL_AUDIO_SUBCATS = {3010, 3020, 3030, 3040}
+_ALL_AUDIO_SUBCATS = {3010, 3020, 3030, 3040, 3050, 3060}
 
 
 def _category_passes(item_category: int, wanted_cats: set[int]) -> bool:
