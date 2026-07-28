@@ -153,6 +153,8 @@ async def torznab(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
+    logger.info("Torznab request: %s?%s", request.url.path, request.url.query)
+
     if not _check_apikey(apikey):
         logger.warning("Torznab: invalid apikey=%s", apikey)
         return Response(content="Invalid API key", status_code=403)
@@ -232,8 +234,8 @@ async def _search(
                 pass
 
     logger.info(
-        "Torznab search: t=%s q=%r artist=%r album=%r cat=%s limit=%d offset=%d",
-        t, query, artist, album, cat, limit, offset,
+        "Torznab search: t=%s q=%r artist=%r album=%r cat=%r -> wanted_cats=%s limit=%d offset=%d",
+        t, query, artist, album, cat, sorted(wanted_cats) if wanted_cats else "(none)", limit, offset,
     )
 
     results: list = []
@@ -253,8 +255,27 @@ async def _search(
         except Exception as exc:
             logger.error("Featured fetch error: %s", exc)
 
+    logger.info("Streamrip returned %d raw results (before category filter):", len(results))
+    for r in results:
+        logger.info("  raw: source=%s release=%s format=%r -> cat=%d  (%s - %s)",
+                    r.source, r.release_id, r.format_label, _category(r.format_label),
+                    r.artist, r.album)
+
+    pre_filter_count = len(results)
     if wanted_cats:
-        results = [r for r in results if _category_passes(_category(r.format_label), wanted_cats)]
+        kept = []
+        for r in results:
+            c = _category(r.format_label)
+            passed = _category_passes(c, wanted_cats)
+            logger.info("  filter: cat=%d wanted=%s -> %s  (%s - %s [%s])",
+                        c, sorted(wanted_cats), "KEEP" if passed else "DROP",
+                        r.artist, r.album, r.format_label)
+            if passed:
+                kept.append(r)
+        results = kept
+    logger.info("Category filter: %d -> %d results (wanted_cats=%s)",
+                pre_filter_count, len(results),
+                sorted(wanted_cats) if wanted_cats else "(none)")
 
     rss = _make_rss_channel(request)
     channel = rss.find("channel")
@@ -269,7 +290,8 @@ async def _search(
         except Exception as exc:
             logger.error("Error building item XML for %s: %s", item.release_id, exc)
 
-    logger.info("Torznab search: returning %d results (after category filter)", len(paginated))
+    logger.info("Torznab search: returning %d items in XML (pre-filter=%d, post-filter=%d)",
+                len(paginated), pre_filter_count, len(results))
 
     xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(rss, encoding="unicode")
     return Response(content=xml_str, media_type="application/xml")

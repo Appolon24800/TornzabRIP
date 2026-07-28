@@ -303,7 +303,14 @@ class StreamRipApi:
                 pages = await client.get_featured("new-releases", limit=limit)
                 media_type = "album"
             else:
-                pages = await client.search("featured", "", limit=limit)
+                # Deezer has no working "featured" endpoint in this streamrip
+                # build (the editorial API omits the `total` key the parser
+                # expects), so fall back to a real search. Empty queries come
+                # from Lidarr's indexer test / RSS sync, which just need to see
+                # some valid releases.
+                from datetime import datetime
+                fallback_query = str(datetime.now().year)
+                pages = await client.search("album", fallback_query, limit=limit)
                 media_type = "album"
 
             if not pages:
