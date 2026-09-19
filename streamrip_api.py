@@ -14,9 +14,16 @@ from streamrip.media import PendingAlbum
 from streamrip.media.track import PendingSingle
 from streamrip.metadata import SearchResults
 
-from config import STREAMRIP_CONFIG_PATH, DOWNLOAD_TARGET_DIR
+from config import STREAMRIP_CONFIG_PATH, DOWNLOAD_TARGET_DIR, DOWNLOAD_MAX_CONNECTIONS
+from patches import apply_patches
 
 logger = logging.getLogger("torznabrip.streamrip_api")
+
+# Patch streamrip (streaming Deezer downloads) before anything can download.
+apply_patches()
+
+# Keep the duration cache bounded; entries are tiny but searches run forever.
+_MAX_DURATION_CACHE = 10_000
 
 
 def _make_dummy_db() -> Database:
@@ -177,6 +184,7 @@ class StreamRipApi:
 
         self._config.session.downloads.folder = DOWNLOAD_TARGET_DIR
         self._config.session.downloads.source_subdirectories = False
+        self._config.session.downloads.max_connections = DOWNLOAD_MAX_CONNECTIONS
         self._config.session.cli.progress_bars = False
         self._config.session.cli.text_output = False
 
@@ -336,6 +344,8 @@ class StreamRipApi:
         async def _task(r: SearchResult, key: str) -> None:
             d = await _fetch(r.release_id)
             if d:
+                if len(self._duration_cache) >= _MAX_DURATION_CACHE:
+                    self._duration_cache.pop(next(iter(self._duration_cache)))
                 self._duration_cache[key] = d
                 r.size_bytes = _estimate_size(r.format_label, r.num_tracks or 1, d)
 

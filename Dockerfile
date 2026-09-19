@@ -16,8 +16,12 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY requirements.txt ./
+# git is only needed to pip-install streamrip from GitHub; purge it afterwards.
+# No headless browser: the service only uses streamrip's API clients, never its
+# interactive CLI login flow.
 RUN pip install --no-cache-dir -r requirements.txt \
-    && playwright install --with-deps chromium
+    && apt-get purge -y --auto-remove git \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY *.py ./
 

@@ -14,6 +14,7 @@ from fastapi.responses import PlainTextResponse
 from job_store import store, DownloadJob, JobState
 from streamrip_api import streamrip
 from torznab import decode_guid, encode_guid, info_hash
+from patches import trim_memory
 from config import DOWNLOAD_TARGET_DIR, DEFAULT_PORT
 
 logger = logging.getLogger("torznabrip.qbittorrent")
@@ -467,6 +468,10 @@ async def _run_download(job: DownloadJob) -> None:
     except Exception as exc:
         logger.error("Download failed for %s: %s", job.name, exc)
         store.mark_failed(job.hash, str(exc))
+    finally:
+        # Hand the download buffers' freed heap back to the OS instead of
+        # letting RSS ratchet up and stay there.
+        trim_memory()
 
 
 @router.get("/torrents/delete")

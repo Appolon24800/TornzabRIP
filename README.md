@@ -80,6 +80,7 @@ docker compose up -d
 | `DOWNLOAD_TARGET_DIR`    | `/data/downloads`                    | Where ripped files are written.                        |
 | `JOBS_FILE`              | `/data/jobs.json`                    | Persistent download-job state.                         |
 | `PORT`                   | `8686`                               | HTTP port the server listens on.                       |
+| `DOWNLOAD_MAX_CONNECTIONS` | `3`                                | Max tracks downloaded concurrently per rip. Lower it on memory-constrained instances. |
 | `TORZNABRIP_API_KEY`     | *(empty)*                            | If set, Lidarr must send this as `?apikey=`. Empty = accept all. |
 | `LIDARR_URL`             | *(empty)*                            | Base URL of your Lidarr, e.g. `http://192.168.1.39:8686`. Enables the RSS sync when set with `LIDARR_API_KEY`. |
 | `LIDARR_API_KEY`         | *(empty)*                            | Lidarr API key (Settings → General). Required for RSS sync. |
@@ -146,7 +147,7 @@ docker run -p 8686:8686 -v $(pwd)/streamrip-config:/config/streamrip \
 
 - The published image is multi-arch (`linux/amd64` + `linux/arm64`), so it runs on both
   x86 hosts and ARM NAS devices.
-- The image installs a headless Chromium (via Playwright) because StreamRip uses it for
-  Deezer login. This makes the image a few hundred MB.
+- Deezer downloads are streamed and decrypted to disk in small frames instead of being
+  buffered whole in RAM, so memory stays low even while ripping several albums.
 - The container runs as root by default. If you need a specific UID/GID owning the output
   files, run with `user: "1000:1000"` in compose (ensure the mounted dirs are writable).

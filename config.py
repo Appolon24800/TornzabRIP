@@ -7,6 +7,10 @@ STREAMRIP_CONFIG_PATH = os.environ.get(
 DOWNLOAD_TARGET_DIR = os.environ.get("DOWNLOAD_TARGET_DIR", "/data/downloads")
 DEFAULT_PORT = int(os.environ.get("PORT", "8686"))
 
+# Maximum number of tracks downloaded concurrently within/across album rips.
+# Lower this on memory-constrained instances.
+DOWNLOAD_MAX_CONNECTIONS = int(os.environ.get("DOWNLOAD_MAX_CONNECTIONS", "3"))
+
 API_KEY = os.environ.get("TORZNABRIP_API_KEY", "")
 
 SERVER_TITLE = "TorznabRIP"
