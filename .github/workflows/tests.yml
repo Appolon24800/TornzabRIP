@@ -12,8 +12,10 @@ jobs:
     permissions:
       contents: read
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.13", "3.14"]
+        # Docker uses 3.13; StreamRip's Pillow <11 pin predates Python 3.14.
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
