@@ -11,6 +11,14 @@ It exposes two fake APIs on one HTTP server:
 
 No real torrents are ever involved.
 
+For structured Deezer album searches, the full artist and album query runs first.
+If it returns no results, TornzabRIP retries once without the standalone word
+"remix" in the album title. It keeps the artist, remixer, and version name.
+This handles titles such as MusicBrainz's "Dracula JENNIE remix Boys Noize Disko
+version", which Deezer lists as "Dracula (with JENNIE) (Boys Noize Disko Version)".
+Returned titles and download IDs stay as Deezer supplied them. Qobuz and free-text
+searches do not use this fallback, and API errors do not trigger it.
+
 ## Requirements
 
 - Docker (or Podman) — that's it.
@@ -142,6 +150,24 @@ docker build -t tornzabrip .
 docker run -p 8686:8686 -v $(pwd)/streamrip-config:/config/streamrip \
   -v $(pwd)/downloads:/downloads -v $(pwd)/data:/data tornzabrip
 ```
+
+## Tests
+
+After installing `requirements.txt`, run the offline regression tests:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+To also check the Dracula search against Deezer's public API and build the Torznab
+XML response, run:
+
+```bash
+TORNZABRIP_LIVE_DEEZER_TEST=1 python -m unittest discover -s tests -v
+```
+
+The live test needs network access but no credentials. It does not download music
+or contact Lidarr.
 
 ## Notes
 
