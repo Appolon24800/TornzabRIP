@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import shutil
 import tempfile
 from typing import Optional
@@ -24,6 +25,16 @@ apply_patches()
 
 # Keep the duration cache bounded; entries are tiny but searches run forever.
 _MAX_DURATION_CACHE = 10_000
+
+
+def _deezer_album_fallback_query(artist: str, album: str) -> str:
+    """Keep version names, but omit differing catalog wording on a retry."""
+    # MusicBrainz may say "JENNIE remix" where Deezer says "with JENNIE".
+    # Do not drop the remixer or version name, which identifies the release.
+    relaxed_album, count = re.subn(r"\bremix\b", "", album, flags=re.IGNORECASE)
+    if not count or not any(char.isalnum() for char in relaxed_album):
+        return ""
+    return " ".join(f"{artist} {relaxed_album}".split())
 
 
 def _make_dummy_db() -> Database:
@@ -243,11 +254,18 @@ class StreamRipApi:
         if not search_query:
             return []
 
+        fallback_query = ""
+        if not query.strip() and artist.strip() and album.strip() and media_type == "album":
+            fallback_query = _deezer_album_fallback_query(artist, album)
+
         tasks = []
         if self._qobuz and self._qobuz.logged_in:
             tasks.append(self._search_safe("qobuz", self._qobuz, media_type, search_query, limit, enrich))
         if self._deezer and self._deezer.logged_in:
-            tasks.append(self._search_safe("deezer", self._deezer, media_type, search_query, limit, enrich))
+            tasks.append(self._search_safe(
+                "deezer", self._deezer, media_type, search_query, limit, enrich,
+                fallback_query=fallback_query,
+            ))
 
         if not tasks:
             return []
@@ -284,9 +302,16 @@ class StreamRipApi:
         query: str,
         limit: int,
         enrich: bool = True,
+        fallback_query: str = "",
     ) -> list[SearchResult]:
         try:
             pages = await client.search(media_type, query, limit=limit)
+            if not pages and fallback_query:
+                logger.info(
+                    "Empty %s search for %r; retrying once with %r.",
+                    source, query, fallback_query,
+                )
+                pages = await client.search(media_type, fallback_query, limit=limit)
         except Exception as exc:
             logger.error("Search on %s failed: %s", source, exc)
             return []
