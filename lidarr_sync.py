@@ -9,6 +9,7 @@ from typing import Optional
 import aiohttp
 
 from aliases import aliases
+from streamrip_api import is_va_artist
 from config import LIDARR_API_KEY, LIDARR_URL, RSS_SYNC_INTERVAL, SEEN_RELEASES_FILE
 
 logger = logging.getLogger("torznabrip.lidarr_sync")
@@ -122,8 +123,11 @@ class LidarrSync:
                 or (entry.get("metadata") or {}).get("value")
                 or (entry.get("metadata") or {}).get("name")
             )
-            if name:
-                artists.append(name)
+            if not name or is_va_artist(name):
+                # "Various Artists" is a Lidarr pseudo-artist; polling it
+                # would only surface random compilations.
+                continue
+            artists.append(name)
         return artists
 
     # ----- sync --------------------------------------------------------------
