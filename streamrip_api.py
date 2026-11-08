@@ -38,6 +38,16 @@ def _deezer_album_fallback_query(artist: str, album: str) -> str:
     return " ".join(f"{artist} {relaxed_album}".split())
 
 
+_VA_ARTIST_MARKERS = {"va", "various", "various artist", "various artists"}
+
+
+def is_va_artist(name: str) -> bool:
+    """Lidarr reports Various Artists releases under pseudo-artist names
+    ("VA" in indexer queries, "Various Artists" in the artist list) that the
+    catalogs do not index as an artist."""
+    return (name or "").strip().lower() in _VA_ARTIST_MARKERS
+
+
 def _make_dummy_db() -> Database:
     return Database(Dummy(), Dummy())
 
@@ -250,6 +260,10 @@ class StreamRipApi:
         query = aliases.rewrite(query.strip())
         artist = aliases.rewrite(artist.strip())
         album = aliases.rewrite(album.strip())
+
+        # "VA" is not an artist the catalogs index; search the album alone.
+        if is_va_artist(artist):
+            artist = ""
 
         search_query = query.strip()
         if not search_query and artist and album:
