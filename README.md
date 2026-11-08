@@ -94,6 +94,26 @@ docker compose up -d
 | `LIDARR_API_KEY`         | *(empty)*                            | Lidarr API key (Settings → General). Required for RSS sync. |
 | `RSS_SYNC_INTERVAL`      | `3600`                               | Seconds between RSS sync polls. |
 | `SEEN_RELEASES_FILE`     | `seen_releases.json` (next to app)   | Persistent record of releases already seen, so only genuinely new ones are reported. |
+| `ARTIST_ALIASES_FILE`    | `/data/artist_aliases.json`          | JSON file of artist-name aliases (see below).           |
+
+## Artist name aliases
+
+MusicBrainz sometimes names an artist differently than the streaming catalogs do
+(e.g. Lidarr searches **鷺巣詩郎**, but Qobuz and Deezer index **Shiro Sagisu**, so
+Qobuz returns nothing). Put a JSON file at `/data/artist_aliases.json` (or point
+`ARTIST_ALIASES_FILE` at it) mapping the name Lidarr uses to the name the
+catalogs index:
+
+```json
+{
+  "鷺巣詩郎": "Shiro Sagisu"
+}
+```
+
+Searches (and the RSS sync) are rewritten with these aliases before they hit
+Qobuz/Deezer, and result titles show the aliased name back, so Lidarr can match
+them against its artist. The file is reloaded when its mtime changes — no
+restart needed. A missing file simply disables aliasing.
 
 ## Volumes
 

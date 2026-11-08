@@ -16,6 +16,7 @@ from streamrip.media.track import PendingSingle
 from streamrip.metadata import SearchResults
 
 from config import STREAMRIP_CONFIG_PATH, DOWNLOAD_TARGET_DIR, DOWNLOAD_MAX_CONNECTIONS
+from aliases import aliases
 from patches import apply_patches
 
 logger = logging.getLogger("torznabrip.streamrip_api")
@@ -243,6 +244,12 @@ class StreamRipApi:
         if not self._ready:
             logger.warning("StreamRipApi not ready; returning empty results.")
             return []
+
+        # Translate local names (e.g. MusicBrainz kanji) to catalog names
+        # before anything is composed or matched against catalog results.
+        query = aliases.rewrite(query.strip())
+        artist = aliases.rewrite(artist.strip())
+        album = aliases.rewrite(album.strip())
 
         search_query = query.strip()
         if not search_query and artist and album:

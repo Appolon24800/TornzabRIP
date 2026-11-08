@@ -13,6 +13,10 @@ DOWNLOAD_MAX_CONNECTIONS = int(os.environ.get("DOWNLOAD_MAX_CONNECTIONS", "3"))
 
 API_KEY = os.environ.get("TORZNABRIP_API_KEY", "")
 
+# JSON file mapping artist names as Lidarr knows them to the names the
+# catalogs index, e.g. {"鷺巣詩郎": "Shiro Sagisu"}. Missing file = no aliases.
+ARTIST_ALIASES_FILE = os.environ.get("ARTIST_ALIASES_FILE", "/data/artist_aliases.json")
+
 SERVER_TITLE = "TorznabRIP"
 SERVER_VERSION = "5.0.0"
 WEB_API_VERSION = "2.9.0"
