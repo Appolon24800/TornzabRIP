@@ -8,6 +8,7 @@ from typing import Optional
 
 import aiohttp
 
+from aliases import aliases
 from config import LIDARR_API_KEY, LIDARR_URL, RSS_SYNC_INTERVAL, SEEN_RELEASES_FILE
 
 logger = logging.getLogger("torznabrip.lidarr_sync")
@@ -143,15 +144,16 @@ class LidarrSync:
         feed_keys: set[str] = set()
 
         async def check_artist(name: str) -> None:
+            search_name = aliases.rewrite(name)
             async with sem:
                 try:
                     results = await self._api.search(
-                        query=name, media_type="album", limit=50, enrich=False,
+                        query=search_name, media_type="album", limit=50, enrich=False,
                     )
                 except Exception as exc:
                     logger.error("Search for %r failed: %s", name, exc)
                     return
-            target = _norm(name)
+            target = _norm(search_name)
             for r in results:
                 if not r or _norm(r.artist) != target:
                     continue

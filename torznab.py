@@ -8,6 +8,7 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 
 from fastapi import APIRouter, Query, Request, Response
 
+from aliases import aliases
 from streamrip_api import streamrip, SearchResult
 from config import (
     SERVER_TITLE,
@@ -93,7 +94,8 @@ def _item_xml(item: SearchResult, request: Request) -> Element:
     hash_val = info_hash(guid)
     tracks = item.num_tracks or 0
     track_tag = f" [{tracks} track{'s' if tracks != 1 else ''}]" if tracks > 0 else ""
-    title = f"{item.artist} - {item.album} [{item.format_label}] [{item.source.capitalize()}]{track_tag}"
+    artist_display = aliases.display(item.artist)
+    title = f"{artist_display} - {item.album} [{item.format_label}] [{item.source.capitalize()}]{track_tag}"
     download_url = f"{request.base_url}download?id={guid}"
     external_url = _source_url(item.source, item.release_id)
 
@@ -128,7 +130,7 @@ def _item_xml(item: SearchResult, request: Request) -> Element:
     if item.artist:
         a = SubElement(el, "{http://torznab.com/schemas/2015/feed}attr")
         a.set("name", "artist")
-        a.set("value", item.artist)
+        a.set("value", artist_display)
     if item.album:
         a = SubElement(el, "{http://torznab.com/schemas/2015/feed}attr")
         a.set("name", "album")
